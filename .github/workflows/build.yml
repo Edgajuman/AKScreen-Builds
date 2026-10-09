@@ -1,0 +1,61 @@
+name: Protected AK Screen build
+on:
+  workflow_dispatch:
+    inputs:
+      snapshot:
+        description: Maintainer encrypted snapshot release
+        required: true
+        type: string
+      mode:
+        type: choice
+        options: [validate, windows]
+        default: validate
+permissions:
+  contents: read
+concurrency:
+  group: protected-build
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ${{ inputs.mode == 'windows' && 'windows-2025' || 'ubuntu-24.04' }}
+    timeout-minutes: 120
+    env:
+      CARGO_INCREMENTAL: 0
+      BUILD_MODE: ${{ inputs.mode }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+      - name: Linux libraries
+        if: inputs.mode != 'windows'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libasound2-dev libgtk-3-dev libxkbcommon-dev libwayland-dev libxi-dev libxtst-dev libxrandr-dev libgl1-mesa-dev libgbm-dev libpipewire-0.3-dev libspa-0.2-dev libxcb-randr0-dev libdbus-1-dev libclang-dev ffmpeg
+      - name: Obtain encrypted snapshot
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SNAPSHOT: ${{ inputs.snapshot }}
+        run: gh release download "$SNAPSHOT" --repo Edgajuman/AKScreen-Builds --pattern source.akenc --dir "$RUNNER_TEMP"
+      - name: Decrypt snapshot
+        shell: bash
+        env:
+          SOURCE_ARCHIVE_KEY: ${{ secrets.SOURCE_ARCHIVE_KEY }}
+        run: node cipher.mjs open "$RUNNER_TEMP/source.akenc" "$RUNNER_TEMP/source.zip"
+      - name: Validate or build
+        shell: bash
+        run: python validate.py
+      - name: Encrypt diagnostics and test packages
+        if: always()
+        shell: bash
+        env:
+          SOURCE_ARCHIVE_KEY: ${{ secrets.SOURCE_ARCHIVE_KEY }}
+        run: node cipher.mjs seal "$RUNNER_TEMP/result.zip" "$RUNNER_TEMP/result.akenc"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: protected-${{ inputs.mode }}-result
+          path: ${{ runner.temp }}/result.akenc
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
