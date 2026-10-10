@@ -53,6 +53,7 @@ else:
             # Snapshots are not Git repositories; formatted sources are included below.
             output.write(b'')
         if run('Compile desktop', ['cargo', 'check', '--locked', '-p', 'filmcraft', '--bin', 'AKScreen']):
+            run('Apply reviewed lint fixes', ['cargo','clippy','--fix','--allow-dirty','--allow-staged','--workspace','--all-targets'])
             for package in ['extensions', 'geom', 'project', 'format', 'engine', 'render', 'export', 'ui-egui']:
                 run('Test ' + package, ['cargo', 'test', '--locked', '-p', 'filmcraft-' + package, '--lib'])
             run('Desktop tests', ['cargo', 'test', '--locked', '-p', 'filmcraft', '--bin', 'AKScreen', 'akscreen::'])
