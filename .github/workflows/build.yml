@@ -14,6 +14,11 @@ on:
         description: Optional encrypted artifact run ID (same platform)
         required: false
         type: string
+      cache_mode:
+        description: Artifact type of the optional cache run
+        type: choice
+        options: [validate, windows, linux, macos-arm64, macos-x64, full-checks]
+        default: validate
 permissions:
   contents: read
 concurrency:
@@ -69,7 +74,7 @@ jobs:
           SOURCE_ARCHIVE_KEY: ${{ secrets.SOURCE_ARCHIVE_KEY }}
           CACHE_RUN: ${{ inputs.cache }}
         run: |
-          gh run download "$CACHE_RUN" --repo Edgajuman/AKScreen-Builds --name protected-${{ inputs.mode }}-result --dir "$RUNNER_TEMP/cache"
+          gh run download "$CACHE_RUN" --repo Edgajuman/AKScreen-Builds --name protected-${{ inputs.cache_mode }}-result --dir "$RUNNER_TEMP/cache"
           node cipher.mjs open "$RUNNER_TEMP/cache/result.akenc" "$RUNNER_TEMP/cached-result.zip"
       - name: Validate or build
         shell: bash
