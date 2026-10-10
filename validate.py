@@ -24,6 +24,11 @@ if cached.exists():
             target=(source/entry.filename).resolve()
             if target.is_relative_to((source/'target').resolve()) and entry.file_size<512*1024*1024:
                 archive.extract(entry,source)
+                permissions=(entry.external_attr>>16)&0o777
+                if os.name!='nt' and target.is_file():
+                    with target.open('rb') as binary:magic=binary.read(4)
+                    if magic in (b'\x7fELF',b'\xcf\xfa\xed\xfe',b'\xfe\xed\xfa\xcf'):permissions|=0o111
+                if os.name!='nt' and permissions:os.chmod(target,permissions)
                 stamp=calendar.timegm((*entry.date_time,0,0,0));os.utime(target,(stamp,stamp))
 # Actual, reviewed SDK binary exercises the component ABI; only public example source is fetched.
 fixture_base='https://raw.githubusercontent.com/Edgajuman/AK-Screen-Extensions/e6e20b26e33df6013243fad36601af72f939a1fd/extensions/edgajuman/wasm-lab/1.0.0/'
@@ -40,6 +45,7 @@ def run(label, args):
     print(label, flush=True)
     with log.open('ab') as output:
         output.write(('\n--- ' + label + ' ---\n').encode())
+        output.flush()
         process=subprocess.Popen(args,cwd=source,stdout=output,stderr=subprocess.STDOUT)
         started=time.monotonic()
         while process.poll() is None:
