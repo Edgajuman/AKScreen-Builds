@@ -45,6 +45,8 @@ jobs:
             printf '%s\n' "$key" > "$RUNNER_TEMP/publish-key"
             chmod 600 "$RUNNER_TEMP/publish-key"
             cd "$RUNNER_TEMP/$repo"
+            if [ "$repo" = downloads ]; then remote=AKScreen-Downloads; else remote=AK-Screen-Extensions; fi
+            git remote set-url origin "git@github.com:Edgajuman/$remote.git"
             git config user.name 'AK Screen Content'
             git config user.email 'noreply@users.noreply.github.com'
             git add -A
