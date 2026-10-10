@@ -8,7 +8,7 @@ on:
         type: string
       mode:
         type: choice
-        options: [validate, windows]
+        options: [validate, windows, linux, macos-arm64, macos-x64, full-checks]
         default: validate
       cache:
         description: Optional encrypted artifact run ID (same platform)
@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
-    runs-on: ${{ inputs.mode == 'windows' && 'windows-2025' || 'ubuntu-24.04' }}
+    runs-on: ${{ inputs.mode == 'windows' && 'windows-2025' || inputs.mode == 'macos-arm64' && 'macos-15' || inputs.mode == 'macos-x64' && 'macos-15-intel' || 'ubuntu-24.04' }}
     timeout-minutes: 120
     env:
       CARGO_INCREMENTAL: 0
@@ -33,10 +33,10 @@ jobs:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
       - name: Linux libraries
-        if: inputs.mode != 'windows'
+        if: inputs.mode == 'validate' || inputs.mode == 'linux' || inputs.mode == 'full-checks'
         run: sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 update -qq && sudo apt-get install -y -qq libasound2-dev libgtk-3-dev libxkbcommon-dev libwayland-dev libxi-dev libxtst-dev libxrandr-dev libgl1-mesa-dev libgbm-dev libpipewire-0.3-dev libspa-0.2-dev libxcb-randr0-dev libdbus-1-dev libclang-dev fonts-noto-cjk
       - name: Pinned external video test oracle
-        if: inputs.mode != 'windows'
+        if: inputs.mode == 'validate' || inputs.mode == 'full-checks'
         shell: bash
         run: |
           curl --retry 2 -fsSL https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-09-14-16/ffmpeg-n8.1.3-16-ge0a878dd70-linux64-gpl-8.1.tar.xz -o "$RUNNER_TEMP/oracle.tar.xz"
@@ -44,6 +44,12 @@ jobs:
           mkdir -p "$RUNNER_TEMP/ffmpeg"
           tar -xJf "$RUNNER_TEMP/oracle.tar.xz" --strip-components=1 -C "$RUNNER_TEMP/ffmpeg"
           echo "$RUNNER_TEMP/ffmpeg/bin" >> "$GITHUB_PATH"
+      - name: Windows embedded resources and static runtime
+        if: inputs.mode == 'windows'
+        shell: pwsh
+        run: |
+          "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS=-C target-feature=+crt-static" >> $env:GITHUB_ENV
+          "FILMCRAFT_REQUIRE_WINRES=1" >> $env:GITHUB_ENV
       - name: Obtain encrypted snapshot
         shell: bash
         env:

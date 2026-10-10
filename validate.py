@@ -43,11 +43,19 @@ def run(label, args):
         print('Failed; details are available in the encrypted diagnostics artifact.', flush=True)
         failed = True
     return process.returncode == 0
-if os.environ.get('BUILD_MODE') == 'windows':
-    run('Build Windows desktop', ['cargo', 'build', '--release', '--locked', '--target', 'x86_64-pc-windows-msvc', '-p', 'filmcraft', '--bin', 'AKScreen'])
+mode=os.environ.get('BUILD_MODE','validate')
+targets={'windows':'x86_64-pc-windows-msvc','linux':'x86_64-unknown-linux-gnu','macos-arm64':'aarch64-apple-darwin','macos-x64':'x86_64-apple-darwin'}
+if mode in targets:
+    target=targets[mode]
+    run('Build desktop '+mode, ['cargo', 'build', '--release', '--locked', '--target', target, '-p', 'filmcraft', '--bin', 'AKScreen'])
     if not failed:
-        run('Desktop regression tests', ['cargo', 'test', '--release', '--locked', '--target', 'x86_64-pc-windows-msvc', '-p', 'filmcraft', '--bin', 'AKScreen', 'akscreen::'])
-        run('Package Windows installer', ['pwsh', '-File', 'packaging/akscreen/windows.ps1'])
+        run('Desktop regression tests', ['cargo', 'test', '--release', '--locked', '--target', target, '-p', 'filmcraft', '--bin', 'AKScreen', 'akscreen::'])
+        run('Theme regression tests', ['cargo','test','--release','--locked','--target',target,'-p','filmcraft-ui-egui','--lib','theme::tests::akscreen_themes'])
+        if not failed:
+            if mode=='windows':run('Package Windows installer',['pwsh','-File','packaging/akscreen/windows.ps1','-Target',target])
+            else:run('Package desktop',['bash','packaging/akscreen/'+('linux.sh' if mode=='linux' else 'macos.sh'),target])
+elif mode=='full-checks':
+    run('Full quality gates',['cargo','xtask','ci'])
 else:
     if run('Resolve dependencies', ['cargo', 'generate-lockfile']):
         run('Format', ['cargo', 'fmt', '--all'])
@@ -67,9 +75,9 @@ with zipfile.ZipFile(pathlib.Path(os.environ['RUNNER_TEMP']) / 'result.zip', 'w'
     if (source / 'Cargo.lock').exists(): archive.write(source / 'Cargo.lock', 'Cargo.lock')
     for p in (source/'target').rglob('*'):
         if p.is_file() and p.stat().st_size<512*1024*1024 and not any(part in ('incremental',) for part in p.relative_to(source).parts):archive.write(p,p.relative_to(source).as_posix())
-    if os.environ.get('BUILD_MODE') == 'windows':
+    if mode in targets:
         for p in (source / 'dist/akscreen').glob('*'):
-            if p.is_file(): archive.write(p, 'packages/' + p.name)
+            if p.is_file() and p.suffix in ('.zip','.exe','.gz','.dmg','.txt'): archive.write(p, 'packages/' + p.name)
     else:
         for p in source.rglob('*.rs'):
             if not any(part in ('target', '.git', 'dist') for part in p.relative_to(source).parts):
