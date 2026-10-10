@@ -19,6 +19,20 @@ if os.environ.get('BUILD_MODE')=='diagnostics':
     sys.exit(0)
 if cached.exists():
     with zipfile.ZipFile(cached) as archive:
+        if 'source-hashes.json' in archive.namelist():
+            previous=json.loads(archive.read('source-hashes.json'))
+            for filename,record in previous.items():
+                target=(source/filename).resolve()
+                if target.is_relative_to(source.resolve()) and target.is_file() and target.stat().st_size<=128*1024*1024:
+                    if hashlib.sha256(target.read_bytes()).hexdigest()==record['sha256']:
+                        os.utime(target,ns=(record['mtime'],record['mtime']))
+        elif os.name!='nt':
+            # Legacy validation artifacts include the exact formatted source used by their compiler.
+            for entry in archive.infolist():
+                if entry.filename.startswith('formatted/'):
+                    target=(source/entry.filename.removeprefix('formatted/')).resolve()
+                    if target.is_relative_to(source.resolve()) and target.is_file() and target.read_bytes()==archive.read(entry):
+                        os.utime(target,(1,1))
         for entry in archive.infolist():
             if not entry.filename.startswith('target/'):continue
             target=(source/entry.filename).resolve()
@@ -67,7 +81,12 @@ if mode in targets:
             if mode=='windows':run('Package Windows installer',['pwsh','-File','packaging/akscreen/windows.ps1','-Target',target])
             else:run('Package desktop',['bash','packaging/akscreen/'+('linux.sh' if mode=='linux' else 'macos.sh'),target])
 elif mode=='full-checks':
-    run('Full quality gates',['cargo','xtask','ci'])
+    if run('Full quality gates',['cargo','xtask','ci']):
+        if run('Build validated Linux desktop',['cargo','build','--release','--locked','-p','filmcraft','--bin','AKScreen']):
+            import shutil
+            dest=source/'target/x86_64-unknown-linux-gnu/release';dest.mkdir(parents=True,exist_ok=True)
+            shutil.copy2(source/'target/release/AKScreen',dest/'AKScreen')
+            run('Package validated Linux desktop',['bash','packaging/akscreen/linux.sh','x86_64-unknown-linux-gnu'])
 else:
     if run('Resolve dependencies', ['cargo', 'generate-lockfile']):
         run('Format', ['cargo', 'fmt', '--all'])
@@ -83,11 +102,16 @@ else:
                 run('Check ' + gate, ['cargo', 'xtask', gate])
             run('Clippy', ['cargo', 'clippy', '--locked', '--workspace', '--all-targets', '--', '-D', 'warnings'])
 with zipfile.ZipFile(pathlib.Path(os.environ['RUNNER_TEMP']) / 'result.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
+    hashes={}
+    for p in source.rglob('*'):
+        if p.is_file() and not any(part in ('target','.git','dist') for part in p.relative_to(source).parts) and p.stat().st_size<=128*1024*1024:
+            hashes[p.relative_to(source).as_posix()]={'sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'mtime':p.stat().st_mtime_ns}
+    archive.writestr('source-hashes.json',json.dumps(hashes))
     if log.exists(): archive.write(log, 'diagnostics.log')
     if (source / 'Cargo.lock').exists(): archive.write(source / 'Cargo.lock', 'Cargo.lock')
     for p in (source/'target').rglob('*'):
         if p.is_file() and p.stat().st_size<512*1024*1024 and not any(part in ('incremental',) for part in p.relative_to(source).parts):archive.write(p,p.relative_to(source).as_posix())
-    if mode in targets:
+    if mode in targets or mode=='full-checks':
         for p in (source / 'dist/akscreen').glob('*'):
             if p.is_file() and p.suffix in ('.zip','.exe','.gz','.dmg','.txt'): archive.write(p, 'packages/' + p.name)
     else:
