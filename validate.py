@@ -11,6 +11,12 @@ with zipfile.ZipFile(pathlib.Path(os.environ['RUNNER_TEMP']) / 'source.zip') as 
 subprocess.run(['git', 'init', '-q'], cwd=source, check=True)
 subprocess.run(['git', 'add', '.'], cwd=source, check=True)
 cached=pathlib.Path(os.environ['RUNNER_TEMP'])/'cached-result.zip'
+if os.environ.get('BUILD_MODE')=='diagnostics':
+    with zipfile.ZipFile(cached) as archive,zipfile.ZipFile(pathlib.Path(os.environ['RUNNER_TEMP'])/'result.zip','w',zipfile.ZIP_DEFLATED) as result:
+        for entry in archive.infolist():
+            if entry.filename=='diagnostics.log' or entry.filename=='Cargo.lock' or entry.filename.startswith('formatted/'):
+                result.writestr(entry,archive.read(entry))
+    sys.exit(0)
 if cached.exists():
     with zipfile.ZipFile(cached) as archive:
         for entry in archive.infolist():
@@ -82,4 +88,8 @@ with zipfile.ZipFile(pathlib.Path(os.environ['RUNNER_TEMP']) / 'result.zip', 'w'
         for p in source.rglob('*.rs'):
             if not any(part in ('target', '.git', 'dist') for part in p.relative_to(source).parts):
                 archive.write(p, 'formatted/' + p.relative_to(source).as_posix())
+with zipfile.ZipFile(pathlib.Path(os.environ['RUNNER_TEMP'])/'result.zip') as archive,zipfile.ZipFile(pathlib.Path(os.environ['RUNNER_TEMP'])/'diagnostics.zip','w',zipfile.ZIP_DEFLATED) as result:
+    for entry in archive.infolist():
+        if entry.filename=='diagnostics.log' or entry.filename=='Cargo.lock' or entry.filename.startswith('formatted/'):
+            result.writestr(entry,archive.read(entry))
 sys.exit(1 if failed else 0)

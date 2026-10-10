@@ -8,7 +8,7 @@ on:
         type: string
       mode:
         type: choice
-        options: [validate, windows, linux, macos-arm64, macos-x64, full-checks]
+        options: [validate, windows, linux, macos-arm64, macos-x64, full-checks, diagnostics]
         default: validate
       cache:
         description: Optional encrypted artifact run ID (same platform)
@@ -84,7 +84,17 @@ jobs:
         shell: bash
         env:
           SOURCE_ARCHIVE_KEY: ${{ secrets.SOURCE_ARCHIVE_KEY }}
-        run: node cipher.mjs seal "$RUNNER_TEMP/result.zip" "$RUNNER_TEMP/result.akenc"
+        run: |
+          node cipher.mjs seal "$RUNNER_TEMP/result.zip" "$RUNNER_TEMP/result.akenc"
+          if [ -f "$RUNNER_TEMP/diagnostics.zip" ]; then node cipher.mjs seal "$RUNNER_TEMP/diagnostics.zip" "$RUNNER_TEMP/diagnostics.akenc"; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: protected-${{ inputs.mode }}-diagnostics
+          path: ${{ runner.temp }}/diagnostics.akenc
+          if-no-files-found: ignore
+          retention-days: 14
+          compression-level: 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
