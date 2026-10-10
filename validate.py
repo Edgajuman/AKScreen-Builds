@@ -1,5 +1,5 @@
 """Keep all private-source diagnostics off public Actions logs."""
-import os, pathlib, subprocess, sys, zipfile, time, urllib.request, hashlib, json
+import os, pathlib, subprocess, sys, zipfile, time, urllib.request, hashlib, json, calendar
 source = pathlib.Path(os.environ['RUNNER_TEMP']) / 'akscreen-source'
 source.mkdir(exist_ok=True)
 with zipfile.ZipFile(pathlib.Path(os.environ['RUNNER_TEMP']) / 'source.zip') as archive:
@@ -16,7 +16,9 @@ if cached.exists():
         for entry in archive.infolist():
             if not entry.filename.startswith('target/'):continue
             target=(source/entry.filename).resolve()
-            if target.is_relative_to((source/'target').resolve()) and entry.file_size<512*1024*1024:archive.extract(entry,source)
+            if target.is_relative_to((source/'target').resolve()) and entry.file_size<512*1024*1024:
+                archive.extract(entry,source)
+                stamp=calendar.timegm((*entry.date_time,0,0,0));os.utime(target,(stamp,stamp))
 # Actual, reviewed SDK binary exercises the component ABI; only public example source is fetched.
 fixture_base='https://raw.githubusercontent.com/Edgajuman/AK-Screen-Extensions/e6e20b26e33df6013243fad36601af72f939a1fd/extensions/edgajuman/wasm-lab/1.0.0/'
 manifest=json.loads(urllib.request.urlopen(fixture_base+'manifest.json',timeout=30).read())
