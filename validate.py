@@ -8,6 +8,8 @@ with zipfile.ZipFile(pathlib.Path(os.environ['RUNNER_TEMP']) / 'source.zip') as 
         if not target.is_relative_to(source.resolve()) or entry.file_size > 128 * 1024 * 1024:
             raise SystemExit('Invalid source snapshot')
     archive.extractall(source)
+subprocess.run(['git', 'init', '-q'], cwd=source, check=True)
+subprocess.run(['git', 'add', '.'], cwd=source, check=True)
 log = pathlib.Path(os.environ['RUNNER_TEMP']) / 'diagnostics.log'
 failed = False
 def run(label, args):
