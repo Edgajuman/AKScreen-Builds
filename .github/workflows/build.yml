@@ -10,10 +10,14 @@ on:
         type: choice
         options: [validate, windows]
         default: validate
+      cache:
+        description: Optional encrypted artifact run ID (same platform)
+        required: false
+        type: string
 permissions:
   contents: read
 concurrency:
-  group: protected-build
+  group: protected-build-${{ inputs.snapshot }}-${{ inputs.mode }}
   cancel-in-progress: false
 jobs:
   build:
@@ -42,6 +46,16 @@ jobs:
         env:
           SOURCE_ARCHIVE_KEY: ${{ secrets.SOURCE_ARCHIVE_KEY }}
         run: node cipher.mjs open "$RUNNER_TEMP/source.akenc" "$RUNNER_TEMP/source.zip"
+      - name: Restore encrypted build cache
+        if: inputs.cache != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_ARCHIVE_KEY: ${{ secrets.SOURCE_ARCHIVE_KEY }}
+          CACHE_RUN: ${{ inputs.cache }}
+        run: |
+          gh run download "$CACHE_RUN" --repo Edgajuman/AKScreen-Builds --name protected-${{ inputs.mode }}-result --dir "$RUNNER_TEMP/cache"
+          node cipher.mjs open "$RUNNER_TEMP/cache/result.akenc" "$RUNNER_TEMP/cached-result.zip"
       - name: Validate or build
         shell: bash
         run: python validate.py
